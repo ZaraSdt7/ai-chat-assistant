@@ -1,8 +1,8 @@
 import {
   Injectable,
   InternalServerErrorException,
+  HttpException,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -89,11 +89,7 @@ export class ChatService {
         reply: savedAssistantMessage.content,
       };
     } catch (error) {
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ServiceUnavailableException ||
-        error instanceof InternalServerErrorException
-      ) {
+      if (error instanceof HttpException) {
         throw error;
       }
 

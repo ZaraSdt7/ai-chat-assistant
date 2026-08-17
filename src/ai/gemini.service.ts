@@ -1,9 +1,12 @@
 import {
   Injectable,
   InternalServerErrorException,
+  HttpException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
+import { AIMessage } from './types/ai-message.type';
 
 type GeminiResponse = {
   candidates?: Array<{
@@ -13,11 +16,6 @@ type GeminiResponse = {
       }>;
     };
   }>;
-};
-
-type GeminiMessage = {
-  role: 'user' | 'model';
-  content: string;
 };
 
 @Injectable()
@@ -31,7 +29,7 @@ export class GeminiService {
       this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-2.5-flash';
   }
 
-  async generateReply(history: GeminiMessage[]): Promise<string> {
+  async generateReply(history: AIMessage[]): Promise<string> {
     if (!this.apiKey) {
       throw new InternalServerErrorException('Gemini API key is missing');
     }
@@ -81,10 +79,7 @@ export class GeminiService {
 
       return reply;
     } catch (error) {
-      if (
-        error instanceof InternalServerErrorException ||
-        error instanceof ServiceUnavailableException
-      ) {
+      if (error instanceof HttpException) {
         throw error;
       }
 
