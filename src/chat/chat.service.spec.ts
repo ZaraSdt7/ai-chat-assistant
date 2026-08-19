@@ -1,7 +1,9 @@
 import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
+import type { AIClassifier } from '../ai/interfaces/ai-classifier.interface';
 import type { GeminiService } from '../ai/gemini.service';
+import { GENERAL_PROMPT_V1 } from '../ai/prompts/versions/general/v1';
 import { ChatService } from './chat.service';
 import { MessageRole } from './enum/message.enum';
 
@@ -33,6 +35,10 @@ describe('ChatService', () => {
     generateReply: jest.fn<GeminiService['generateReply']>(),
   };
 
+  const aiClassifier = {
+    classify: jest.fn<AIClassifier['classify']>(),
+  };
+
   const dataSource = {};
 
   beforeEach(() => {
@@ -45,8 +51,9 @@ describe('ChatService', () => {
       messageRepository as unknown as ConstructorParameters<
         typeof ChatService
       >[1],
-      geminiService as unknown as ConstructorParameters<typeof ChatService>[2],
-      dataSource as unknown as ConstructorParameters<typeof ChatService>[3],
+      geminiService,
+      aiClassifier,
+      dataSource as unknown as ConstructorParameters<typeof ChatService>[4],
     );
   });
 
@@ -69,15 +76,34 @@ describe('ChatService', () => {
     messageRepository.find.mockResolvedValue([
       { role: MessageRole.User, content: 'Hello' },
     ]);
+    aiClassifier.classify.mockResolvedValue({
+      intent: 'general',
+      confidence: 0.98,
+    });
     geminiService.generateReply.mockResolvedValue('Hello from Gemini');
 
     const result = await service.sendMessage('Hello');
 
     expect(conversationRepository.create).toHaveBeenCalled();
+    expect(aiClassifier.classify).toHaveBeenCalledWith('Hello');
+    expect(messageRepository.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        intent: 'general',
+        intentConfidence: 0.98,
+      }),
+    );
     expect(messageRepository.save).toHaveBeenCalledTimes(2);
-    expect(geminiService.generateReply).toHaveBeenCalledWith([
-      { role: 'user', content: 'Hello' },
-    ]);
+    expect(geminiService.generateReply).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Hello' }],
+      GENERAL_PROMPT_V1,
+    );
+    expect(messageRepository.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        promptVersion: 'general-v1',
+      }),
+    );
     expect(result).toEqual({
       conversationId: 'conversation-1',
       messageId: 'assistant-message-1',
@@ -100,6 +126,10 @@ describe('ChatService', () => {
       { role: MessageRole.Assistant, content: 'Previous reply' },
       { role: MessageRole.User, content: 'New message' },
     ]);
+    aiClassifier.classify.mockResolvedValue({
+      intent: 'question',
+      confidence: 0.91,
+    });
     geminiService.generateReply.mockResolvedValue('Reply');
 
     const result = await service.sendMessage('New message', 'conversation-1');
@@ -131,6 +161,10 @@ describe('ChatService', () => {
     messageRepository.find.mockResolvedValue([
       { role: MessageRole.User, content: 'Hello' },
     ]);
+    aiClassifier.classify.mockResolvedValue({
+      intent: 'general',
+      confidence: 0.8,
+    });
     geminiService.generateReply.mockRejectedValue(
       new ServiceUnavailableException('Gemini service is unavailable'),
     );

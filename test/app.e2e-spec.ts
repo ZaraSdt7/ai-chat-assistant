@@ -13,6 +13,7 @@ import type { Server } from 'node:http';
 import request from 'supertest';
 
 import { AppModule } from './../src/app.module';
+import { AI_CLASSIFIER } from './../src/ai/interfaces/ai-classifier.interface';
 import { GeminiService } from './../src/ai/gemini.service';
 
 describe('Chat API (e2e)', () => {
@@ -24,12 +25,21 @@ describe('Chat API (e2e)', () => {
       .mockResolvedValue('Mocked Gemini response'),
   };
 
+  const classifierMock = {
+    classify: jest.fn().mockResolvedValue({
+      intent: 'general',
+      confidence: 0.98,
+    }),
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(GeminiService)
       .useValue(geminiMock)
+      .overrideProvider(AI_CLASSIFIER)
+      .useValue(classifierMock)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -48,6 +58,10 @@ describe('Chat API (e2e)', () => {
   afterEach(() => {
     jest.clearAllMocks();
     geminiMock.generateReply.mockResolvedValue('Mocked Gemini response');
+    classifierMock.classify.mockResolvedValue({
+      intent: 'general',
+      confidence: 0.98,
+    });
   });
 
   afterAll(async () => {
@@ -82,6 +96,7 @@ describe('Chat API (e2e)', () => {
     expect(responseBody.conversationId).toBeDefined();
     expect(responseBody.messageId).toBeDefined();
     expect(responseBody.reply).toBe('Mocked Gemini response');
+    expect(classifierMock.classify).toHaveBeenCalledWith('Hello');
     expect(geminiMock.generateReply).toHaveBeenCalled();
   });
 });

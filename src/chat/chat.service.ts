@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   InternalServerErrorException,
   HttpException,
@@ -7,7 +8,11 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
-import { GeminiService } from '../ai/gemini.service';
+import { AI_CLASSIFIER } from '../ai/interfaces/ai-classifier.interface';
+import type { AIClassifier } from '../ai/interfaces/ai-classifier.interface';
+import { AI_PROVIDER } from '../ai/interfaces/ai-provider.interface';
+import type { AIProvider } from '../ai/interfaces/ai-provider.interface';
+import { resolveSystemPrompt } from '../ai/prompts/prompt-resolver';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { MessageRole } from './enum/message.enum';
@@ -21,7 +26,11 @@ export class ChatService {
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
 
-    private readonly geminiService: GeminiService,
+    @Inject(AI_PROVIDER)
+    private readonly aiProvider: AIProvider,
+
+    @Inject(AI_CLASSIFIER)
+    private readonly aiClassifier: AIClassifier,
 
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -50,11 +59,20 @@ export class ChatService {
         conversation = await this.conversationRepository.save(conversation);
       }
 
-      // 2. Save user's message
+      // 2. Classify the message before persisting its AI metadata
+      const classification = await this.aiClassifier.classify(message);
+
+      console.log('AI Classification:', classification);
+
+      const resolvedPrompt = resolveSystemPrompt(classification.intent);
+
+      // 3. Save user's message with its classification
       const userMessage = this.messageRepository.create({
         conversation,
         role: MessageRole.User,
         content: message,
+        intent: classification.intent,
+        intentConfidence: classification.confidence,
       });
 
       await this.messageRepository.save(userMessage);
@@ -69,20 +87,24 @@ export class ChatService {
         content: item.content,
       }));
 
-      // 3. Generate AI response from the persisted conversation history
-      const reply = await this.geminiService.generateReply(geminiHistory);
+      // 4. Generate AI response from the persisted conversation history
+      const reply = await this.aiProvider.generateReply(
+        geminiHistory,
+        resolvedPrompt.content,
+      );
 
-      // 4. Save assistant's response
+      // 5. Save assistant's response
       const assistantMessage = this.messageRepository.create({
         conversation,
         role: MessageRole.Assistant,
         content: reply,
+        promptVersion: resolvedPrompt.version,
       });
 
       const savedAssistantMessage =
         await this.messageRepository.save(assistantMessage);
 
-      // 5. Return response
+      // 6. Return response
       return {
         conversationId: conversation.id,
         messageId: savedAssistantMessage.id,

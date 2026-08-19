@@ -28,6 +28,28 @@ export class Message {
   @Column({ type: 'text' })
   content!: string;
 
+  @Column({
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  intent?: string;
+
+  @Column({
+    type: 'decimal',
+    precision: 4,
+    scale: 3,
+    nullable: true,
+  })
+  intentConfidence?: number;
+
+  @Column({
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  promptVersion?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 }

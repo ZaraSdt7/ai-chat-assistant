@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { AIMessage } from './types/ai-message.type';
+import { AIProvider } from './interfaces/ai-provider.interface';
+import type { AIMessage } from './types/ai-message.type';
 
 type GeminiResponse = {
   candidates?: Array<{
@@ -19,7 +20,7 @@ type GeminiResponse = {
 };
 
 @Injectable()
-export class GeminiService {
+export class GeminiService implements AIProvider {
   private readonly apiKey: string;
   private readonly model: string;
 
@@ -29,7 +30,10 @@ export class GeminiService {
       this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-2.5-flash';
   }
 
-  async generateReply(history: AIMessage[]): Promise<string> {
+  async generateReply(
+    history: AIMessage[],
+    systemPrompt?: string,
+  ): Promise<string> {
     if (!this.apiKey) {
       throw new InternalServerErrorException('Gemini API key is missing');
     }
@@ -45,6 +49,17 @@ export class GeminiService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          ...(systemPrompt
+            ? {
+                systemInstruction: {
+                  parts: [
+                    {
+                      text: systemPrompt,
+                    },
+                  ],
+                },
+              }
+            : {}),
           contents: history.map((message) => ({
             role: message.role,
             parts: [
